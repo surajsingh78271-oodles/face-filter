@@ -27,8 +27,8 @@
   },
   "version": "1.1.0",
   "scripts": {
-    "dev": "ws --http2",
-    "build": "npm run build"
+    "dev": "ws --http2 --hostname=suraj --port=3000",
+    "build": "webpack --mode production"
   },
   "devDependencies": {
     "local-web-server": "^4.2.1"
