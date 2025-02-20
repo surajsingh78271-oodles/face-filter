@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta http-equiv="content-language" content="en-EN" />
+    
+    <title>JEELIZ FACEFILTER: THREE.JS CELFACE DEMO</title>
+    
+    <!-- INCLUDE JEELIZ FACEFILTER SCRIPT -->
+    <script src="../../../dist/jeelizFaceFilter.js"></script>
+
+    <!-- INCLUDE THREE.JS -->
+    <script src="../../../libs/three/v97/three.min.js"></script>
+
+    <!-- INCLUDE JEELIZRESIZER -->
+    <script src="../../../helpers/JeelizResizer.js"></script>
+
+    <!-- INCLUDE DEMO SCRIPT -->
+    <script src="./main.js"></script>
+
+    <!-- INCLUDE FORK ME ON GITHUB BANNER -->
+    <script src="../../appearance/widget.js"></script>
+
+    <link rel="stylesheet" href="../../appearance/style.css" type="text/css" />
+  </head>
+  
+  <body>
+    <canvas width="600" height="600" id='jeeFaceFilterCanvas'></canvas>
+    <br>
+    <button id="startRecord">Start Recording</button>
+    <button id="stopRecord" disabled>Stop Recording</button>
+    <button style="display: none;" id="downloadButton" onclick="downloadVideo()">Download Video</button>
+    <video id="remoteVideo" autoplay playsinline></video>
+    
+    <a id="downloadLink" style="display: none;"> Video</a>
+    <button id="startCall">Start Call</button>
+    <script>
+      let canvas = document.getElementById("jeeFaceFilterCanvas");
+      let startButton = document.getElementById("startRecord");
+      let stopButton = document.getElementById("stopRecord");
+      let downloadLink = document.getElementById("downloadLink");
+      let downloadButton = document.getElementById("downloadButton");
+      let startCallButton = document.getElementById("startCall");
+      
+      let mediaRecorder;
+      let recordedChunks = [];
+
+      function downloadVideo(){
+        downloadLink.click()
+      }
+
+      // Function to start recording
+      startButton.addEventListener("click",async () => {
+          let stream = canvas.captureStream(30); // Capture at 30 FPS
+          let audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Merge video & audio streams
+          let combinedStream = new MediaStream([
+            ...stream.getVideoTracks(), // Add video track from canvas
+            ...audioStream.getAudioTracks()  // Add audio track from microphone
+          ]);
+          mediaRecorder = new MediaRecorder(combinedStream, { mimeType: "video/webm", });
+
+          mediaRecorder.ondataavailable = (event) => {
+              if (event.data.size > 0) {
+                  recordedChunks.push(event.data);
+              }
+          };
+
+          mediaRecorder.onstop = () => {
+              let blob = new Blob(recordedChunks, { type: "video/webm" });
+              let url = URL.createObjectURL(blob);
+              console.log("url=============>",url)
+              downloadLink.href = url;
+              downloadLink.download = "recorded-video.webm";
+              downloadButton.style.display = "block"
+              // downloadLink.style.display = "flex";
+              // downloadLink.style.backgroundColor = "blue"
+              downloadButton.style.margin = "20px 0px"
+              downloadButton.style.padding = "10px 20px"
+              // downloadLink.style.width = "120px"
+              // downloadLink.innerText = "Download Video";
+          };
+
+          mediaRecorder.start();
+          startButton.disabled = true;
+          stopButton.disabled = false;
+      });
+
+      // Function to stop recording
+      stopButton.addEventListener("click", () => {
+          mediaRecorder.stop();
+          startButton.disabled = false;
+          stopButton.disabled = true;
+      });
+
+
+
+
+
+
+      let peerConnection;
+
+      // Place the socket URL here
+        let socket = new WebSocket("ws://localhost:3000"); // Connect to signaling server
+
+        async function startCall() {
+            let canvasStream = canvas.captureStream(30);
+            let audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            let combinedStream = new MediaStream([
+                ...canvasStream.getVideoTracks(),
+                ...audioStream.getAudioTracks()
+            ]);
+
+            localVideo.srcObject = combinedStream;
+
+            peerConnection = new RTCPeerConnection({
+                iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+            });
+
+            combinedStream.getTracks().forEach(track => peerConnection.addTrack(track, combinedStream));
+
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.send(JSON.stringify({ candidate: event.candidate }));
+                }
+            };
+
+            socket.onmessage = async (event) => {
+                let message = JSON.parse(event.data);
+                if (message.offer) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
+                    let answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.send(JSON.stringify({ answer }));
+                } else if (message.answer) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+                } else if (message.candidate) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+                }
+            };
+
+            let offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.send(JSON.stringify({ offer }));
+        }
+
+
+
+
+
+      startCallButton.addEventListener("click", startCall);
+  </script>
+  </body>
+</html>
+ 
+ 
